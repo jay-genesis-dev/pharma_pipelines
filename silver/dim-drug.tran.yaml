@@ -1,0 +1,143 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Silver layer: Deduplicate and cleanse RAW_DRUG into DIM_DRUG"
+    origin: "maia-019fd1be-2d17-7854-9ae8-9b4a3c4f7133"
+  components:
+    Load RAW_DRUG:
+      type: "table-input"
+      parameters:
+        componentName: "Load RAW_DRUG"
+        database: "REPLICATED"
+        schema: "RAW"
+        targetTable: "RAW_DRUG"
+        columnNames:
+        - "DRUG_ID"
+        - "NDC"
+        - "DRUG_NAME"
+        - "GENERIC_NAME"
+        - "MANUFACTURER"
+        - "DOSAGE_FORM"
+        - "STRENGTH"
+        - "ROUTE"
+        - "DEA_SCHEDULE"
+        - "IS_GENERIC"
+        - "AWP_UNIT_PRICE"
+        - "CDC_OPERATION"
+        - "CDC_SEQUENCE"
+        - "_LOADED_AT"
+    Dedup by CDC:
+      type: "rank"
+      sources:
+      - "Load RAW_DRUG"
+      parameters:
+        componentName: "Dedup by CDC"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "DRUG_ID"
+        orderingWithinPartitions:
+        - - "CDC_SEQUENCE"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "ROW_NUM"
+    Keep Latest Non-Deleted:
+      type: "filter"
+      sources:
+      - "Dedup by CDC"
+      parameters:
+        componentName: "Keep Latest Non-Deleted"
+        mode: "Advanced"
+        filterClause: |
+          "ROW_NUM" = 1 AND ("CDC_OPERATION" != 'D' OR "CDC_OPERATION" IS NULL)
+    Cleanse:
+      type: "calculator"
+      sources:
+      - "Keep Latest Non-Deleted"
+      parameters:
+        componentName: "Cleanse"
+        includeInputColumns: "No"
+        calculations:
+        - - |
+            "DRUG_ID"
+          - "DRUG_ID"
+        - - |
+            "NDC"
+          - "NDC"
+        - - |
+            TRIM("DRUG_NAME")
+          - "DRUG_NAME"
+        - - |
+            TRIM("GENERIC_NAME")
+          - "GENERIC_NAME"
+        - - |
+            UPPER(TRIM("MANUFACTURER"))
+          - "MANUFACTURER"
+        - - |
+            UPPER(TRIM("DOSAGE_FORM"))
+          - "DOSAGE_FORM"
+        - - |
+            "STRENGTH"
+          - "STRENGTH"
+        - - |
+            REGEXP_SUBSTR("STRENGTH", '[0-9.]+')
+          - "STRENGTH_VALUE"
+        - - |
+            REGEXP_SUBSTR("STRENGTH", '[A-Za-z/%]+$')
+          - "STRENGTH_UNIT"
+        - - |
+            UPPER(TRIM("ROUTE"))
+          - "ROUTE"
+        - - |
+            "DEA_SCHEDULE"
+          - "DEA_SCHEDULE"
+        - - |
+            "IS_GENERIC"
+          - "IS_GENERIC"
+        - - |
+            "AWP_UNIT_PRICE"
+          - "AWP_UNIT_PRICE"
+        - - |
+            "_LOADED_AT"
+          - "SOURCE_LOADED_AT"
+        - - |
+            CURRENT_TIMESTAMP()
+          - "SILVER_PROCESSED_AT"
+    Write DIM_DRUG:
+      type: "rewrite-table"
+      sources:
+      - "Cleanse"
+      parameters:
+        componentName: "Write DIM_DRUG"
+        warehouse: "[Environment Default]"
+        database: "REPLICATED"
+        schema: "SILVER"
+        targetTable: "DIM_DRUG"
+design:
+  components:
+    Load RAW_DRUG:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Dedup by CDC:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    Keep Latest Non-Deleted:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Cleanse:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:
+    Write DIM_DRUG:
+      position:
+        x: 640
+        "y": 0
+      tempMetlId:
