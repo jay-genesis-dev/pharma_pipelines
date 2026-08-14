@@ -1,0 +1,61 @@
+type: "orchestration"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "DATA-512 candidate run: creates CLAIMS_CANDIDATE.SILVER schema and\
+      \ runs the v2 claims transformation. Does NOT touch REPLICATED.SILVER or any\
+      \ production pipeline."
+    origin: "DATA-512"
+  components:
+    Start:
+      type: "start"
+      transitions:
+        unconditional:
+        - "Create Candidate Schema"
+      parameters:
+        componentName: "Start"
+    Create Candidate Schema:
+      type: "sql-executor"
+      transitions:
+        success:
+        - "FACT_CLAIM_V2"
+      parameters:
+        componentName: "Create Candidate Schema"
+        scriptLocation: "Component"
+        sqlScript: |
+          CREATE DATABASE IF NOT EXISTS "CLAIMS_CANDIDATE";
+          CREATE SCHEMA IF NOT EXISTS "CLAIMS_CANDIDATE"."SILVER";
+    FACT_CLAIM_V2:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Done"
+      parameters:
+        componentName: "FACT_CLAIM_V2"
+        transformationJob: "silver/fact-claim-v2.tran.yaml"
+    Done:
+      type: "end"
+      parameters:
+        componentName: "Done"
+design:
+  components:
+    Start:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Create Candidate Schema:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    FACT_CLAIM_V2:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Done:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:

@@ -1,0 +1,89 @@
+type: "orchestration"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "DATA-512 candidate run (standalone SQL): reads REPLICATED.RAW_V2.RAW_CLAIM,\
+      \ deduplicates by CDC, and writes CLAIMS_CANDIDATE.SILVER.FACT_CLAIM with stable\
+      \ output columns plus the two new v2 payment fields. Does NOT touch REPLICATED.SILVER\
+      \ or any production pipeline."
+    origin: "DATA-512"
+  components:
+    Start:
+      type: "start"
+      transitions:
+        unconditional:
+        - "Build FACT_CLAIM from v2 feed"
+      parameters:
+        componentName: "Start"
+    Build FACT_CLAIM from v2 feed:
+      type: "sql-executor"
+      parameters:
+        componentName: "Build FACT_CLAIM from v2 feed"
+        scriptLocation: "Component"
+        sqlScript: |
+          CREATE OR REPLACE TABLE CLAIMS_CANDIDATE.SILVER.FACT_CLAIM AS
+          WITH ranked AS (
+              SELECT
+                  CLAIM_ID,
+                  DISPENSE_ID,
+                  PATIENT_ID,
+                  PAYER_ID,
+                  CLAIM_DATE,
+                  CLAIM_STATUS,
+                  SUBMITTED_AMOUNT_USD,
+                  ALLOWED_AMOUNT_USD,
+                  PATIENT_RESPONSIBILITY_USD,
+                  INGREDIENT_COST_PAID,
+                  DISPENSING_FEE_PAID,
+                  COPAY_AMOUNT,
+                  AMOUNT_PAID,
+                  REJECT_CODE,
+                  GROUP_ID,
+                  CDC_OPERATION,
+                  CDC_SEQUENCE,
+                  _LOADED_AT,
+                  ROW_NUMBER() OVER (
+                      PARTITION BY CLAIM_ID
+                      ORDER BY CDC_SEQUENCE DESC
+                  ) AS ROW_NUM
+              FROM REPLICATED.RAW_V2.RAW_CLAIM
+          ),
+          latest AS (
+              SELECT *
+              FROM ranked
+              WHERE ROW_NUM = 1
+                AND (CDC_OPERATION != 'D' OR CDC_OPERATION IS NULL)
+          )
+          SELECT
+              CLAIM_ID,
+              DISPENSE_ID,
+              PATIENT_ID,
+              PAYER_ID,
+              CLAIM_DATE,
+              UPPER(TRIM(CLAIM_STATUS))                               AS CLAIM_STATUS,
+              SUBMITTED_AMOUNT_USD                                    AS SUBMITTED_AMOUNT,
+              INGREDIENT_COST_PAID,
+              DISPENSING_FEE_PAID,
+              COPAY_AMOUNT,
+              AMOUNT_PAID,
+              COALESCE(AMOUNT_PAID, 0) - COALESCE(COPAY_AMOUNT, 0)   AS NET_PAID,
+              CASE WHEN REJECT_CODE IS NOT NULL THEN TRUE ELSE FALSE END AS IS_REJECTED,
+              REJECT_CODE,
+              GROUP_ID,
+              ALLOWED_AMOUNT_USD,
+              PATIENT_RESPONSIBILITY_USD,
+              _LOADED_AT                                              AS SOURCE_LOADED_AT,
+              CURRENT_TIMESTAMP()                                     AS SILVER_PROCESSED_AT
+          FROM latest
+design:
+  components:
+    Start:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Build FACT_CLAIM from v2 feed:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
