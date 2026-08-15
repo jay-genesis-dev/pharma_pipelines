@@ -1,0 +1,151 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Silver v2: Deduplicate and cleanse RAW_V2.RAW_PATIENT into CLAIMS_CANDIDATE.SILVER.DIM_PATIENT with PII hashing"
+  components:
+    Load RAW_PATIENT:
+      type: "table-input"
+      parameters:
+        componentName: "Load RAW_PATIENT"
+        database: "REPLICATED"
+        schema: "RAW_V2"
+        targetTable: "RAW_PATIENT"
+        columnNames:
+        - "PATIENT_ID"
+        - "PHARMACY_ID"
+        - "FIRST_NAME"
+        - "LAST_NAME"
+        - "DATE_OF_BIRTH"
+        - "GENDER"
+        - "ADDRESS_LINE1"
+        - "CITY"
+        - "STATE"
+        - "ZIP"
+        - "PHONE"
+        - "EMAIL"
+        - "PRIMARY_PAYER_ID"
+        - "ENROLL_DATE"
+        - "CDC_OPERATION"
+        - "CDC_SEQUENCE"
+        - "_LOADED_AT"
+    Dedup by CDC:
+      type: "rank"
+      sources:
+      - "Load RAW_PATIENT"
+      parameters:
+        componentName: "Dedup by CDC"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "PATIENT_ID"
+        orderingWithinPartitions:
+        - - "CDC_SEQUENCE"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "ROW_NUM"
+    Keep Latest Non-Deleted:
+      type: "filter"
+      sources:
+      - "Dedup by CDC"
+      parameters:
+        componentName: "Keep Latest Non-Deleted"
+        mode: "Advanced"
+        filterClause: |
+          "ROW_NUM" = 1 AND ("CDC_OPERATION" != 'D' OR "CDC_OPERATION" IS NULL)
+    Cleanse:
+      type: "calculator"
+      sources:
+      - "Keep Latest Non-Deleted"
+      parameters:
+        componentName: "Cleanse"
+        includeInputColumns: "No"
+        calculations:
+        - - |
+            "PATIENT_ID"
+          - "PATIENT_ID"
+        - - |
+            "PHARMACY_ID"
+          - "PHARMACY_ID"
+        - - |
+            TRIM("FIRST_NAME")
+          - "FIRST_NAME"
+        - - |
+            TRIM("LAST_NAME")
+          - "LAST_NAME"
+        - - |
+            "DATE_OF_BIRTH"
+          - "DATE_OF_BIRTH"
+        - - |
+            DATEDIFF('YEAR', "DATE_OF_BIRTH", CURRENT_DATE())
+          - "AGE"
+        - - |
+            UPPER(TRIM("GENDER"))
+          - "GENDER"
+        - - |
+            TRIM("ADDRESS_LINE1")
+          - "ADDRESS_LINE1"
+        - - |
+            UPPER(TRIM("CITY"))
+          - "CITY"
+        - - |
+            UPPER(TRIM("STATE"))
+          - "STATE"
+        - - |
+            LEFT("ZIP", 5)
+          - "ZIP"
+        - - |
+            SHA2("PHONE", 256)
+          - "PHONE_HASH"
+        - - |
+            SHA2(LOWER(TRIM("EMAIL")), 256)
+          - "EMAIL_HASH"
+        - - |
+            "PRIMARY_PAYER_ID"
+          - "PRIMARY_PAYER_ID"
+        - - |
+            "ENROLL_DATE"
+          - "ENROLL_DATE"
+        - - |
+            "_LOADED_AT"
+          - "SOURCE_LOADED_AT"
+        - - |
+            CURRENT_TIMESTAMP()
+          - "SILVER_PROCESSED_AT"
+    Write DIM_PATIENT:
+      type: "rewrite-table"
+      sources:
+      - "Cleanse"
+      parameters:
+        componentName: "Write DIM_PATIENT"
+        warehouse: "[Environment Default]"
+        database: "CLAIMS_CANDIDATE"
+        schema: "SILVER"
+        targetTable: "DIM_PATIENT"
+design:
+  components:
+    Load RAW_PATIENT:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Dedup by CDC:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    Keep Latest Non-Deleted:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Cleanse:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:
+    Write DIM_PATIENT:
+      position:
+        x: 640
+        "y": 0
+      tempMetlId:

@@ -1,0 +1,155 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Silver v2: Deduplicate RAW_V2.RAW_PRESCRIPTION into CLAIMS_CANDIDATE.SILVER.FACT_PRESCRIPTION with IS_EXPIRED flag"
+  components:
+    Load RAW_PRESCRIPTION:
+      type: "table-input"
+      parameters:
+        componentName: "Load RAW_PRESCRIPTION"
+        database: "REPLICATED"
+        schema: "RAW_V2"
+        targetTable: "RAW_PRESCRIPTION"
+        columnNames:
+        - "PRESCRIPTION_ID"
+        - "RX_NUMBER"
+        - "PHARMACY_ID"
+        - "PATIENT_ID"
+        - "PRESCRIBER_ID"
+        - "DRUG_ID"
+        - "WRITTEN_DATE"
+        - "EXPIRATION_DATE"
+        - "QUANTITY_PRESCRIBED"
+        - "DAYS_SUPPLY"
+        - "REFILLS_AUTHORIZED"
+        - "REFILLS_REMAINING"
+        - "RX_STATUS"
+        - "SIG_TEXT"
+        - "ORIGIN"
+        - "CDC_OPERATION"
+        - "CDC_SEQUENCE"
+        - "_LOADED_AT"
+    Dedup by CDC:
+      type: "rank"
+      sources:
+      - "Load RAW_PRESCRIPTION"
+      parameters:
+        componentName: "Dedup by CDC"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "PRESCRIPTION_ID"
+        orderingWithinPartitions:
+        - - "CDC_SEQUENCE"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "ROW_NUM"
+    Keep Latest Non-Deleted:
+      type: "filter"
+      sources:
+      - "Dedup by CDC"
+      parameters:
+        componentName: "Keep Latest Non-Deleted"
+        mode: "Advanced"
+        filterClause: |
+          "ROW_NUM" = 1 AND ("CDC_OPERATION" != 'D' OR "CDC_OPERATION" IS NULL)
+    Cleanse:
+      type: "calculator"
+      sources:
+      - "Keep Latest Non-Deleted"
+      parameters:
+        componentName: "Cleanse"
+        includeInputColumns: "No"
+        calculations:
+        - - |
+            "PRESCRIPTION_ID"
+          - "PRESCRIPTION_ID"
+        - - |
+            "RX_NUMBER"
+          - "RX_NUMBER"
+        - - |
+            "PHARMACY_ID"
+          - "PHARMACY_ID"
+        - - |
+            "PATIENT_ID"
+          - "PATIENT_ID"
+        - - |
+            "PRESCRIBER_ID"
+          - "PRESCRIBER_ID"
+        - - |
+            "DRUG_ID"
+          - "DRUG_ID"
+        - - |
+            "WRITTEN_DATE"
+          - "WRITTEN_DATE"
+        - - |
+            "EXPIRATION_DATE"
+          - "EXPIRATION_DATE"
+        - - |
+            CASE WHEN "EXPIRATION_DATE" < CURRENT_DATE() THEN TRUE ELSE FALSE END
+          - "IS_EXPIRED"
+        - - |
+            "QUANTITY_PRESCRIBED"
+          - "QUANTITY_PRESCRIBED"
+        - - |
+            "DAYS_SUPPLY"
+          - "DAYS_SUPPLY"
+        - - |
+            "REFILLS_AUTHORIZED"
+          - "REFILLS_AUTHORIZED"
+        - - |
+            "REFILLS_REMAINING"
+          - "REFILLS_REMAINING"
+        - - |
+            UPPER(TRIM("RX_STATUS"))
+          - "RX_STATUS"
+        - - |
+            "SIG_TEXT"
+          - "SIG_TEXT"
+        - - |
+            UPPER(TRIM("ORIGIN"))
+          - "ORIGIN"
+        - - |
+            "_LOADED_AT"
+          - "SOURCE_LOADED_AT"
+        - - |
+            CURRENT_TIMESTAMP()
+          - "SILVER_PROCESSED_AT"
+    Write FACT_PRESCRIPTION:
+      type: "rewrite-table"
+      sources:
+      - "Cleanse"
+      parameters:
+        componentName: "Write FACT_PRESCRIPTION"
+        warehouse: "[Environment Default]"
+        database: "CLAIMS_CANDIDATE"
+        schema: "SILVER"
+        targetTable: "FACT_PRESCRIPTION"
+design:
+  components:
+    Load RAW_PRESCRIPTION:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Dedup by CDC:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    Keep Latest Non-Deleted:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Cleanse:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:
+    Write FACT_PRESCRIPTION:
+      position:
+        x: 640
+        "y": 0
+      tempMetlId:
