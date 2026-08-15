@@ -1,0 +1,142 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Silver v2 (candidate): Deduplicate and cleanse RAW_V2.RAW_PRESCRIBER\
+      \ into CLAIMS_CANDIDATE.SILVER.DIM_PRESCRIBER. Unchanged vs production apart\
+      \ from source schema and target database."
+    origin: "maia-019fd1be-2d17-7854-9ae8-9b4a3c4f7133"
+  components:
+    Load RAW_PRESCRIBER:
+      type: "table-input"
+      parameters:
+        componentName: "Load RAW_PRESCRIBER"
+        database: "REPLICATED"
+        schema: "RAW_V2"
+        targetTable: "RAW_PRESCRIBER"
+        columnNames:
+        - "PRESCRIBER_ID"
+        - "NPI"
+        - "DEA_NUMBER"
+        - "FIRST_NAME"
+        - "LAST_NAME"
+        - "SPECIALTY"
+        - "STATE_LICENSE"
+        - "ADDRESS_LINE1"
+        - "CITY"
+        - "STATE"
+        - "ZIP"
+        - "CDC_OPERATION"
+        - "CDC_SEQUENCE"
+        - "_LOADED_AT"
+    Dedup by CDC:
+      type: "rank"
+      sources:
+      - "Load RAW_PRESCRIBER"
+      parameters:
+        componentName: "Dedup by CDC"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "PRESCRIBER_ID"
+        orderingWithinPartitions:
+        - - "CDC_SEQUENCE"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "ROW_NUM"
+    Keep Latest Non-Deleted:
+      type: "filter"
+      sources:
+      - "Dedup by CDC"
+      parameters:
+        componentName: "Keep Latest Non-Deleted"
+        mode: "Advanced"
+        filterClause: |
+          "ROW_NUM" = 1 AND ("CDC_OPERATION" != 'D' OR "CDC_OPERATION" IS NULL)
+    Cleanse:
+      type: "calculator"
+      sources:
+      - "Keep Latest Non-Deleted"
+      parameters:
+        componentName: "Cleanse"
+        includeInputColumns: "No"
+        calculations:
+        - - |
+            "PRESCRIBER_ID"
+          - "PRESCRIBER_ID"
+        - - |
+            "NPI"
+          - "NPI"
+        - - |
+            "DEA_NUMBER"
+          - "DEA_NUMBER"
+        - - |
+            TRIM("FIRST_NAME")
+          - "FIRST_NAME"
+        - - |
+            TRIM("LAST_NAME")
+          - "LAST_NAME"
+        - - |
+            TRIM("FIRST_NAME") || ' ' || TRIM("LAST_NAME")
+          - "FULL_NAME"
+        - - |
+            UPPER(TRIM("SPECIALTY"))
+          - "SPECIALTY"
+        - - |
+            "STATE_LICENSE"
+          - "STATE_LICENSE"
+        - - |
+            TRIM("ADDRESS_LINE1")
+          - "ADDRESS_LINE1"
+        - - |
+            UPPER(TRIM("CITY"))
+          - "CITY"
+        - - |
+            UPPER(TRIM("STATE"))
+          - "STATE"
+        - - |
+            LEFT("ZIP", 5)
+          - "ZIP"
+        - - |
+            "_LOADED_AT"
+          - "SOURCE_LOADED_AT"
+        - - |
+            CURRENT_TIMESTAMP()
+          - "SILVER_PROCESSED_AT"
+    Write DIM_PRESCRIBER:
+      type: "rewrite-table"
+      sources:
+      - "Cleanse"
+      parameters:
+        componentName: "Write DIM_PRESCRIBER"
+        warehouse: "[Environment Default]"
+        database: "CLAIMS_CANDIDATE"
+        schema: "SILVER"
+        targetTable: "DIM_PRESCRIBER"
+design:
+  components:
+    Load RAW_PRESCRIBER:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Dedup by CDC:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    Keep Latest Non-Deleted:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Cleanse:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:
+    Write DIM_PRESCRIBER:
+      position:
+        x: 640
+        "y": 0
+      tempMetlId:
