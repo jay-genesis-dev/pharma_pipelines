@@ -1,0 +1,144 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "v2 feed (DATA-512): Deduplicate RAW_V2.RAW_DISPENSE into CLAIMS_CANDIDATE.SILVER.FACT_DISPENSE with TOTAL_COST (unchanged from v1 logic)"
+    origin: "maia-019fd1be-2d17-7854-9ae8-9b4a3c4f7133"
+  components:
+    Load RAW_DISPENSE:
+      type: "table-input"
+      parameters:
+        componentName: "Load RAW_DISPENSE"
+        database: "REPLICATED"
+        schema: "RAW_V2"
+        targetTable: "RAW_DISPENSE"
+        columnNames:
+        - "DISPENSE_ID"
+        - "PRESCRIPTION_ID"
+        - "PHARMACY_ID"
+        - "FILL_NUMBER"
+        - "FILL_DATE"
+        - "QUANTITY_DISPENSED"
+        - "DAYS_SUPPLY"
+        - "DISPENSED_DRUG_ID"
+        - "PHARMACIST_ID"
+        - "INGREDIENT_COST"
+        - "DISPENSING_FEE"
+        - "DISPENSE_STATUS"
+        - "CDC_OPERATION"
+        - "CDC_SEQUENCE"
+        - "_LOADED_AT"
+    Dedup by CDC:
+      type: "rank"
+      sources:
+      - "Load RAW_DISPENSE"
+      parameters:
+        componentName: "Dedup by CDC"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "DISPENSE_ID"
+        orderingWithinPartitions:
+        - - "CDC_SEQUENCE"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "ROW_NUM"
+    Keep Latest Non-Deleted:
+      type: "filter"
+      sources:
+      - "Dedup by CDC"
+      parameters:
+        componentName: "Keep Latest Non-Deleted"
+        mode: "Advanced"
+        filterClause: |
+          "ROW_NUM" = 1 AND ("CDC_OPERATION" != 'D' OR "CDC_OPERATION" IS NULL)
+    Cleanse:
+      type: "calculator"
+      sources:
+      - "Keep Latest Non-Deleted"
+      parameters:
+        componentName: "Cleanse"
+        includeInputColumns: "No"
+        calculations:
+        - - |
+            "DISPENSE_ID"
+          - "DISPENSE_ID"
+        - - |
+            "PRESCRIPTION_ID"
+          - "PRESCRIPTION_ID"
+        - - |
+            "PHARMACY_ID"
+          - "PHARMACY_ID"
+        - - |
+            "FILL_NUMBER"
+          - "FILL_NUMBER"
+        - - |
+            "FILL_DATE"
+          - "FILL_DATE"
+        - - |
+            "QUANTITY_DISPENSED"
+          - "QUANTITY_DISPENSED"
+        - - |
+            "DAYS_SUPPLY"
+          - "DAYS_SUPPLY"
+        - - |
+            "DISPENSED_DRUG_ID"
+          - "DISPENSED_DRUG_ID"
+        - - |
+            "PHARMACIST_ID"
+          - "PHARMACIST_ID"
+        - - |
+            "INGREDIENT_COST"
+          - "INGREDIENT_COST"
+        - - |
+            "DISPENSING_FEE"
+          - "DISPENSING_FEE"
+        - - |
+            COALESCE("INGREDIENT_COST", 0) + COALESCE("DISPENSING_FEE", 0)
+          - "TOTAL_COST"
+        - - |
+            UPPER(TRIM("DISPENSE_STATUS"))
+          - "DISPENSE_STATUS"
+        - - |
+            "_LOADED_AT"
+          - "SOURCE_LOADED_AT"
+        - - |
+            CURRENT_TIMESTAMP()
+          - "SILVER_PROCESSED_AT"
+    Write FACT_DISPENSE:
+      type: "rewrite-table"
+      sources:
+      - "Cleanse"
+      parameters:
+        componentName: "Write FACT_DISPENSE"
+        warehouse: "[Environment Default]"
+        database: "CLAIMS_CANDIDATE"
+        schema: "SILVER"
+        targetTable: "FACT_DISPENSE"
+design:
+  components:
+    Load RAW_DISPENSE:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Dedup by CDC:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    Keep Latest Non-Deleted:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Cleanse:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:
+    Write FACT_DISPENSE:
+      position:
+        x: 640
+        "y": 0
+      tempMetlId:
