@@ -18,18 +18,23 @@ tables. What we know:
 
 1. **Read this ticket, then explore `REPLICATED.RAW_V2.RAW_CLAIM`** and work out exactly
    what changed vs the current `REPLICATED.RAW.RAW_CLAIM`.
-2. **Build a NEW claims pipeline in its own NEW folder** (e.g. `silver_v2/`) — do **not**
-   modify anything under `silver/` or any running production pipeline. Push your work on a
-   feature branch and open a pull request; once it is merged, **publish and run the new job
-   on Matillion** (environment `Pharma`), writing the candidate output to
-   `CLAIMS_CANDIDATE.SILVER.FACT_CLAIM` (same table name, separate candidate database).
-3. **Keep every existing output column stable** — downstream consumers must see the same
-   names and values (including the column fed by the renamed source field). Carry the two
-   new payment fields through as new output columns.
-4. **Hand the candidate to the Prover**: characterize the production claims fact and the
-   candidate, then run the spec-conformance grade so the change is independently certified
-   before anyone touches production.
-5. **Wait for an explicit human go-ahead** before any production cutover.
+2. **Build the v2 pipelines in their own NEW folder** (e.g. `silver_v2/`) — do **not**
+   modify anything under `silver/` or any running production pipeline. The v2 build must
+   produce the **complete silver layer** into `CLAIMS_CANDIDATE.SILVER` — **all nine
+   tables, same table names as production**: the eight unchanged tables rebuilt exactly
+   as production builds them (reading the unchanged v2 feed tables), and the claims fact
+   adapted per this ticket. The candidate schema must be a full drop-in stand-in, so
+   downstream consumers can switch by repointing their schema alone.
+3. **Keep every existing output column stable** — same names, same values (including the
+   column fed by the renamed source field). Carry the two new payment fields through as
+   new output columns on the claims fact.
+4. Push your work on a feature branch and open a pull request; once it is merged,
+   **publish and run the v2 build on Matillion** (environment `Pharma`).
+5. **Hand the candidate to the Prover**: characterize the full production silver and the
+   full candidate schema, then run the spec-conformance grade. Only the claims-fact
+   changes (and rebuild timestamps) should need licensing — every other table must come
+   back identical.
+6. **Wait for an explicit human go-ahead** before any production cutover.
 
 ## Where things live
 
