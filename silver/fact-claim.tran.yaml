@@ -3,7 +3,9 @@ version: "1.0"
 pipeline:
   metadata:
     description: "Silver layer: Deduplicate RAW_CLAIM into FACT_CLAIM with NET_PAID\
-      \ and IS_REJECTED"
+      \ and IS_REJECTED. v2 feed (DATA-512): reads REPLICATED.RAW_V2; SUBMITTED_AMOUNT_USD\
+      \ mapped to stable output SUBMITTED_AMOUNT; ALLOWED_AMOUNT_USD and\
+      \ PATIENT_RESPONSIBILITY_USD carried through as new columns."
     origin: "maia-019fd1be-2d17-7854-9ae8-9b4a3c4f7133"
   components:
     Load RAW_CLAIM:
@@ -11,7 +13,7 @@ pipeline:
       parameters:
         componentName: "Load RAW_CLAIM"
         database: "REPLICATED"
-        schema: "RAW"
+        schema: "RAW_V2"
         targetTable: "RAW_CLAIM"
         columnNames:
         - "CLAIM_ID"
@@ -20,7 +22,9 @@ pipeline:
         - "PAYER_ID"
         - "CLAIM_DATE"
         - "CLAIM_STATUS"
-        - "SUBMITTED_AMOUNT"
+        - "SUBMITTED_AMOUNT_USD"
+        - "ALLOWED_AMOUNT_USD"
+        - "PATIENT_RESPONSIBILITY_USD"
         - "INGREDIENT_COST_PAID"
         - "DISPENSING_FEE_PAID"
         - "COPAY_AMOUNT"
@@ -81,7 +85,7 @@ pipeline:
             UPPER(TRIM("CLAIM_STATUS"))
           - "CLAIM_STATUS"
         - - |
-            "SUBMITTED_AMOUNT"
+            "SUBMITTED_AMOUNT_USD"
           - "SUBMITTED_AMOUNT"
         - - |
             "INGREDIENT_COST_PAID"
@@ -107,6 +111,12 @@ pipeline:
         - - |
             "GROUP_ID"
           - "GROUP_ID"
+        - - |
+            "ALLOWED_AMOUNT_USD"
+          - "ALLOWED_AMOUNT_USD"
+        - - |
+            "PATIENT_RESPONSIBILITY_USD"
+          - "PATIENT_RESPONSIBILITY_USD"
         - - |
             "_LOADED_AT"
           - "SOURCE_LOADED_AT"

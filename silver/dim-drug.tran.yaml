@@ -10,7 +10,7 @@ pipeline:
       parameters:
         componentName: "Load RAW_DRUG"
         database: "REPLICATED"
-        schema: "RAW"
+        schema: "RAW_V2"
         targetTable: "RAW_DRUG"
         columnNames:
         - "DRUG_ID"

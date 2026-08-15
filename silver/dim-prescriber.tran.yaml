@@ -10,7 +10,7 @@ pipeline:
       parameters:
         componentName: "Load RAW_PRESCRIBER"
         database: "REPLICATED"
-        schema: "RAW"
+        schema: "RAW_V2"
         targetTable: "RAW_PRESCRIBER"
         columnNames:
         - "PRESCRIBER_ID"
