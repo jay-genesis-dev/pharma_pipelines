@@ -1,0 +1,137 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Silver layer: Deduplicate and cleanse RAW_PHARMACY into DIM_PHARMACY"
+    origin: "data-512-claims-feed-v2"
+  components:
+    Load RAW_PHARMACY:
+      type: "table-input"
+      parameters:
+        componentName: "Load RAW_PHARMACY"
+        database: "REPLICATED"
+        schema: "RAW"
+        targetTable: "RAW_PHARMACY"
+        columnNames:
+        - "PHARMACY_ID"
+        - "NCPDP_ID"
+        - "NPI"
+        - "PHARMACY_NAME"
+        - "ADDRESS_LINE1"
+        - "CITY"
+        - "STATE"
+        - "ZIP"
+        - "PHONE"
+        - "STORE_TYPE"
+        - "IS_ACTIVE"
+        - "CDC_OPERATION"
+        - "CDC_SEQUENCE"
+        - "_LOADED_AT"
+    Dedup by CDC:
+      type: "rank"
+      sources:
+      - "Load RAW_PHARMACY"
+      parameters:
+        componentName: "Dedup by CDC"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "PHARMACY_ID"
+        orderingWithinPartitions:
+        - - "CDC_SEQUENCE"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "ROW_NUM"
+    Keep Latest Non-Deleted:
+      type: "filter"
+      sources:
+      - "Dedup by CDC"
+      parameters:
+        componentName: "Keep Latest Non-Deleted"
+        mode: "Advanced"
+        filterClause: |
+          "ROW_NUM" = 1 AND ("CDC_OPERATION" != 'D' OR "CDC_OPERATION" IS NULL)
+    Cleanse:
+      type: "calculator"
+      sources:
+      - "Keep Latest Non-Deleted"
+      parameters:
+        componentName: "Cleanse"
+        includeInputColumns: "No"
+        calculations:
+        - - |
+            "PHARMACY_ID"
+          - "PHARMACY_ID"
+        - - |
+            "NCPDP_ID"
+          - "NCPDP_ID"
+        - - |
+            "NPI"
+          - "NPI"
+        - - |
+            TRIM("PHARMACY_NAME")
+          - "PHARMACY_NAME"
+        - - |
+            TRIM("ADDRESS_LINE1")
+          - "ADDRESS_LINE1"
+        - - |
+            UPPER(TRIM("CITY"))
+          - "CITY"
+        - - |
+            UPPER(TRIM("STATE"))
+          - "STATE"
+        - - |
+            LEFT("ZIP", 5)
+          - "ZIP"
+        - - |
+            "PHONE"
+          - "PHONE"
+        - - |
+            UPPER(TRIM("STORE_TYPE"))
+          - "STORE_TYPE"
+        - - |
+            "IS_ACTIVE"
+          - "IS_ACTIVE"
+        - - |
+            "_LOADED_AT"
+          - "SOURCE_LOADED_AT"
+        - - |
+            CURRENT_TIMESTAMP()
+          - "SILVER_PROCESSED_AT"
+    Write DIM_PHARMACY:
+      type: "rewrite-table"
+      sources:
+      - "Cleanse"
+      parameters:
+        componentName: "Write DIM_PHARMACY"
+        warehouse: "[Environment Default]"
+        database: "CLAIMS_CANDIDATE"
+        schema: "SILVER"
+        targetTable: "DIM_PHARMACY"
+design:
+  components:
+    Load RAW_PHARMACY:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Dedup by CDC:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    Keep Latest Non-Deleted:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Cleanse:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:
+    Write DIM_PHARMACY:
+      position:
+        x: 640
+        "y": 0
+      tempMetlId:

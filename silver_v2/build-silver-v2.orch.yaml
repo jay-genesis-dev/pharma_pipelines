@@ -2,8 +2,11 @@ type: "orchestration"
 version: "1.0"
 pipeline:
   metadata:
-    description: "Creates CLAIMS_CANDIDATE.SILVER schema and runs the v2 claims\
-      \ transformation pipeline, writing candidate output to CLAIMS_CANDIDATE.SILVER.FACT_CLAIM"
+    description: "Builds the full candidate silver layer in CLAIMS_CANDIDATE.SILVER.\
+      \ The 8 unchanged tables are sourced from REPLICATED.RAW (via the production\
+      \ silver/ transforms, repointed to CLAIMS_CANDIDATE). The claims fact table\
+      \ uses the v2 pipeline (silver_v2/fact-claim.tran.yaml) sourced from\
+      \ REPLICATED.RAW_V2. DATA-512."
     origin: "data-512-claims-feed-v2"
   components:
     Start:
@@ -17,25 +20,102 @@ pipeline:
       type: "sql-executor"
       transitions:
         success:
-        - "FACT_CLAIM_V2"
+        - "DIM_PAYER"
+        - "DIM_PHARMACY"
+        - "DIM_PATIENT"
+        - "DIM_PRESCRIBER"
+        - "DIM_DRUG"
       parameters:
         componentName: "Create CLAIMS_CANDIDATE Schema"
         scriptLocation: "Component"
         sqlScript: |
-          CREATE DATABASE IF NOT EXISTS "CLAIMS_CANDIDATE";
           CREATE SCHEMA IF NOT EXISTS "CLAIMS_CANDIDATE"."SILVER";
+    DIM_PAYER:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Dims Complete"
+      parameters:
+        componentName: "DIM_PAYER"
+        transformationJob: "silver_v2/dim-payer.tran.yaml"
+    DIM_PHARMACY:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Dims Complete"
+      parameters:
+        componentName: "DIM_PHARMACY"
+        transformationJob: "silver_v2/dim-pharmacy.tran.yaml"
+    DIM_PATIENT:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Dims Complete"
+      parameters:
+        componentName: "DIM_PATIENT"
+        transformationJob: "silver_v2/dim-patient.tran.yaml"
+    DIM_PRESCRIBER:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Dims Complete"
+      parameters:
+        componentName: "DIM_PRESCRIBER"
+        transformationJob: "silver_v2/dim-prescriber.tran.yaml"
+    DIM_DRUG:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Dims Complete"
+      parameters:
+        componentName: "DIM_DRUG"
+        transformationJob: "silver_v2/dim-drug.tran.yaml"
+    Dims Complete:
+      type: "and"
+      transitions:
+        unconditional:
+        - "FACT_PRESCRIPTION"
+        - "FACT_DISPENSE"
+        - "FACT_CLAIM_V2"
+        - "FACT_INVENTORY"
+      parameters:
+        componentName: "Dims Complete"
+    FACT_PRESCRIPTION:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Facts Complete"
+      parameters:
+        componentName: "FACT_PRESCRIPTION"
+        transformationJob: "silver/fact-prescription.tran.yaml"
+    FACT_DISPENSE:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Facts Complete"
+      parameters:
+        componentName: "FACT_DISPENSE"
+        transformationJob: "silver/fact-dispense.tran.yaml"
     FACT_CLAIM_V2:
       type: "run-transformation"
       transitions:
         success:
-        - "Done"
+        - "Facts Complete"
       parameters:
         componentName: "FACT_CLAIM_V2"
         transformationJob: "silver_v2/fact-claim.tran.yaml"
-    Done:
+    FACT_INVENTORY:
+      type: "run-transformation"
+      transitions:
+        success:
+        - "Facts Complete"
+      parameters:
+        componentName: "FACT_INVENTORY"
+        transformationJob: "silver_v2/fact-inventory.tran.yaml"
+    Facts Complete:
       type: "and"
       parameters:
-        componentName: "Done"
+        componentName: "Facts Complete"
 design:
   components:
     Start:
@@ -48,13 +128,58 @@ design:
         x: 160
         "y": 0
       tempMetlId:
-    FACT_CLAIM_V2:
+    DIM_PAYER:
+      position:
+        x: 320
+        "y": -160
+      tempMetlId:
+    DIM_PHARMACY:
+      position:
+        x: 320
+        "y": -80
+      tempMetlId:
+    DIM_PATIENT:
       position:
         x: 320
         "y": 0
       tempMetlId:
-    Done:
+    DIM_PRESCRIBER:
+      position:
+        x: 320
+        "y": 80
+      tempMetlId:
+    DIM_DRUG:
+      position:
+        x: 320
+        "y": 160
+      tempMetlId:
+    Dims Complete:
       position:
         x: 480
+        "y": 0
+      tempMetlId:
+    FACT_PRESCRIPTION:
+      position:
+        x: 640
+        "y": -120
+      tempMetlId:
+    FACT_DISPENSE:
+      position:
+        x: 640
+        "y": -40
+      tempMetlId:
+    FACT_CLAIM_V2:
+      position:
+        x: 640
+        "y": 40
+      tempMetlId:
+    FACT_INVENTORY:
+      position:
+        x: 640
+        "y": 120
+      tempMetlId:
+    Facts Complete:
+      position:
+        x: 800
         "y": 0
       tempMetlId:

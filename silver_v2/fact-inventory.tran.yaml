@@ -1,0 +1,135 @@
+type: "transformation"
+version: "1.0"
+pipeline:
+  metadata:
+    description: "Silver layer: Deduplicate RAW_INVENTORY into FACT_INVENTORY with reorder and expiry flags"
+    origin: "data-512-claims-feed-v2"
+  components:
+    Load RAW_INVENTORY:
+      type: "table-input"
+      parameters:
+        componentName: "Load RAW_INVENTORY"
+        database: "REPLICATED"
+        schema: "RAW"
+        targetTable: "RAW_INVENTORY"
+        columnNames:
+        - "INVENTORY_ID"
+        - "PHARMACY_ID"
+        - "DRUG_ID"
+        - "QUANTITY_ON_HAND"
+        - "REORDER_LEVEL"
+        - "LAST_RECEIVED_DATE"
+        - "UNIT_COST"
+        - "LOT_NUMBER"
+        - "EXPIRATION_DATE"
+        - "CDC_OPERATION"
+        - "CDC_SEQUENCE"
+        - "_LOADED_AT"
+    Dedup by CDC:
+      type: "rank"
+      sources:
+      - "Load RAW_INVENTORY"
+      parameters:
+        componentName: "Dedup by CDC"
+        includeInputColumns: "Yes"
+        partitionData:
+        - "INVENTORY_ID"
+        orderingWithinPartitions:
+        - - "CDC_SEQUENCE"
+          - "Descending"
+        functions:
+        - - "Row Number"
+          - "ROW_NUM"
+    Keep Latest Non-Deleted:
+      type: "filter"
+      sources:
+      - "Dedup by CDC"
+      parameters:
+        componentName: "Keep Latest Non-Deleted"
+        mode: "Advanced"
+        filterClause: |
+          "ROW_NUM" = 1 AND ("CDC_OPERATION" != 'D' OR "CDC_OPERATION" IS NULL)
+    Cleanse:
+      type: "calculator"
+      sources:
+      - "Keep Latest Non-Deleted"
+      parameters:
+        componentName: "Cleanse"
+        includeInputColumns: "No"
+        calculations:
+        - - |
+            "INVENTORY_ID"
+          - "INVENTORY_ID"
+        - - |
+            "PHARMACY_ID"
+          - "PHARMACY_ID"
+        - - |
+            "DRUG_ID"
+          - "DRUG_ID"
+        - - |
+            "QUANTITY_ON_HAND"
+          - "QUANTITY_ON_HAND"
+        - - |
+            "REORDER_LEVEL"
+          - "REORDER_LEVEL"
+        - - |
+            CASE WHEN "QUANTITY_ON_HAND" <= "REORDER_LEVEL" THEN TRUE ELSE FALSE END
+          - "IS_BELOW_REORDER"
+        - - |
+            "LAST_RECEIVED_DATE"
+          - "LAST_RECEIVED_DATE"
+        - - |
+            "UNIT_COST"
+          - "UNIT_COST"
+        - - |
+            "LOT_NUMBER"
+          - "LOT_NUMBER"
+        - - |
+            "EXPIRATION_DATE"
+          - "EXPIRATION_DATE"
+        - - |
+            DATEDIFF('DAY', CURRENT_DATE(), "EXPIRATION_DATE")
+          - "DAYS_UNTIL_EXPIRY"
+        - - |
+            "_LOADED_AT"
+          - "SOURCE_LOADED_AT"
+        - - |
+            CURRENT_TIMESTAMP()
+          - "SILVER_PROCESSED_AT"
+    Write FACT_INVENTORY:
+      type: "rewrite-table"
+      sources:
+      - "Cleanse"
+      parameters:
+        componentName: "Write FACT_INVENTORY"
+        warehouse: "[Environment Default]"
+        database: "CLAIMS_CANDIDATE"
+        schema: "SILVER"
+        targetTable: "FACT_INVENTORY"
+design:
+  components:
+    Load RAW_INVENTORY:
+      position:
+        x: 0
+        "y": 0
+      tempMetlId:
+    Dedup by CDC:
+      position:
+        x: 160
+        "y": 0
+      tempMetlId:
+    Keep Latest Non-Deleted:
+      position:
+        x: 320
+        "y": 0
+      tempMetlId:
+    Cleanse:
+      position:
+        x: 480
+        "y": 0
+      tempMetlId:
+    Write FACT_INVENTORY:
+      position:
+        x: 640
+        "y": 0
+      tempMetlId:
